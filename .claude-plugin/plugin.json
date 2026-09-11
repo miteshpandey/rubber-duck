@@ -1,0 +1,9 @@
+{
+  "name": "rubber-duck",
+  "version": "0.1.0",
+  "description": "Make your coding agent ask three questions before it builds: the goal, the edge case, the assumption. Manual invocation, hard escape hatch.",
+  "author": {
+    "name": "Mitesh Pandey",
+    "url": "https://github.com/miteshpandey"
+  }
+}

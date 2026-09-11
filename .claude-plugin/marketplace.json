@@ -1,0 +1,16 @@
+{
+  "$schema": "https://www.schemastore.org/claude-code-marketplace.json",
+  "name": "rubber-duck",
+  "description": "Ask three questions before writing code: the goal, the edge case, the assumption.",
+  "owner": {
+    "name": "Mitesh Pandey"
+  },
+  "plugins": [
+    {
+      "name": "rubber-duck",
+      "description": "Question-first, anti-slop coding for Claude Code. Three questions, then the code.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}
