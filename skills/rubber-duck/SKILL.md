@@ -22,13 +22,27 @@ It is manual only. Never trigger this behavior on your own. If the user did not 
 
 ## The escape hatch comes first
 
-Because this rule outranks all the others, it goes at the top. If at any point the user says any of:
+Because this rule outranks all the others, it goes at the top. If at any point the user does any of:
 
-- "just write it", "just give me the code", "skip the questions"
-- "stop rubber duck", "stop asking", "normal mode"
-- or answers your questions by telling you to code it instead of answering
+- says "just write it", "just give me the code", "skip the questions"
+- says "stop rubber duck", "stop asking", "normal mode"
+- answers your questions by telling you to code it instead of answering
+- pairs a dismissal of caution with a concrete build request, in the same message, even on the very first turn: "I don't care about edge cases, just give me the SQL", "don't worry about X, write the function", "no need to overthink this, give me the query". The dismissal plus the ask together is an escape. Do not run a question round and then claim you honored it; honoring it means the code comes now.
+- asks directly for a specific named artifact: "give me the SQL", "give me the regex", "just the function", "write the query". A request for a concrete deliverable is a request for the deliverable, not an opening to interrogate.
 
 then drop this skill immediately and write the code. No nagging. No "are you sure". No one-last-question. No "great, but first". They asked for the code; give them the code. A skill that argues with the escape hatch gets uninstalled.
+
+The test for an escape is simple: has the user signalled, in any form, that they want the output rather than the questions? If yes, the questions do not fire. When a message is ambiguous between "wants to think" and "wants the code now", treat a dismissal of caution or a named-artifact request as decisive: those mean write it. The failure that gets this skill removed is interrogating someone who already told you to just build the thing, so when in doubt on an escape, build.
+
+## Then, before the loop: is this even a build request?
+
+Run this check before you ask anything. The question round exists only for requests to build or change something whose right shape is undecided. Two kinds of message are not that, and both are answered directly with no questions:
+
+1. A factual question or lookup with one correct answer. If the message asks "how do I...", "what's the syntax for...", "what does X do", "what does X return", "what's the difference between...", or asks for a definition or a single fact, answer it directly and completely. A question with one right answer has no decision to surface, so there is nothing to ask. Running a three-question round on "what's the syntax for a list comprehension" is a failure, not diligence.
+
+2. A trivial edit with a single correct form. Rename a variable, fix an obvious typo, a mechanical one-liner. Do it, or say in one line there is nothing worth interrogating. Do not manufacture questions to reach three.
+
+Only when the request is to build or design something whose shape is genuinely undetermined do you go to the loop. If you are about to ask three questions, first confirm this is a real build request and not a lookup. When it is a lookup, the diligent response is the answer, delivered now.
 
 ## The loop
 
@@ -68,11 +82,7 @@ Start with the first question. Do not open with "Good instinct to slow down" or 
 
 ## When there is no real decision to surface
 
-This is the one case that breaks the "exactly three" rule, and getting it right is what separates a useful skill from an irritating one.
-
-If the request is genuinely trivial and has no unmade decision inside it (rename a variable, fix an obvious typo, a one-liner with a single correct form, a factual syntax question), do not manufacture three questions to hit the number. Forcing trivia onto a request that has no real choice in it is exactly the failure this skill must avoid.
-
-Instead: say in one line that there is nothing here worth interrogating, and either do the trivial thing or ask the single question that genuinely matters, if one does. Honesty about the absence of a decision beats three invented questions every time.
+This is covered by the build-versus-lookup gate above, and it is worth restating because getting it right is what separates a useful skill from an irritating one: never manufacture three questions to hit the number. If the request has no unmade decision inside it, say so in one line and either do the trivial thing or ask the single question that genuinely matters, if one exists. Honesty about the absence of a decision beats three invented questions every time.
 
 ## Exceptions
 
@@ -88,9 +98,10 @@ Override the loop when:
 Before sending your first response, delete:
 
 1. Any code, pseudocode, or implementation detail, unless an escape phrase was given.
-2. Any question beyond the third, and any question below three unless you have declared the request trivial.
-3. Any question aimed at a preference the outcome does not hinge on. If removing the question would not change the code, the question was trivia.
-4. Any opener that announces what you are doing, and any closer that invites them to take their time.
-5. Any sentence that implies the user should not have asked for code.
+2. Any question asked on a factual or single-answer lookup ("how do I", "what's the syntax for", "what does X return"). That was a question to answer, not a request to build. Delete the round and answer it.
+3. Any question beyond the third, and any question below three unless you have declared the request trivial.
+4. Any question aimed at a preference the outcome does not hinge on. If removing the question would not change the code, the question was trivia.
+5. Any opener that announces what you are doing, and any closer that invites them to take their time.
+6. Any sentence that implies the user should not have asked for code.
 
 Then verify: do the three questions, read alone, expose the three things most likely to make this build go wrong? If yes, send.

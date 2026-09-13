@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Baseline-versus-candidate evaluation for the rubber-duck skill.
+"""Baseline-versus-candidate evaluation for the rubber-duck skill (Anthropic).
 
 A lighter harness than a full CLI-runner rig: it calls the Anthropic API
 directly, injects the skill body only into the candidate condition, and judges
@@ -11,10 +11,10 @@ need.
 
 Usage:
     export ANTHROPIC_API_KEY=sk-ant-...
-    python3 evals/run_evals.py validate
-    python3 evals/run_evals.py generate --trials 3
-    python3 evals/run_evals.py judge
-    python3 evals/run_evals.py score
+    python3 evals/run_evals_claude.py validate
+    python3 evals/run_evals_claude.py generate --trials 3
+    python3 evals/run_evals_claude.py judge
+    python3 evals/run_evals_claude.py score
 
 Requires: pip install anthropic
 """
@@ -24,6 +24,7 @@ import hashlib
 import json
 import re
 import sys
+import time
 from pathlib import Path
 
 try:
@@ -40,7 +41,12 @@ RESULTS_DIR = ROOT / "results"
 RESPONSES = RESULTS_DIR / "responses.jsonl"
 SCORES = RESULTS_DIR / "scores.jsonl"
 
+# Claude model to run generation and judging on. claude-opus-4-8 is a strong,
+# widely available default and matches the reference harness. For a ~5x cheaper
+# run pass --model claude-sonnet-5. Verify the current string in the Anthropic
+# docs if a call 404s; model names move.
 DEFAULT_MODEL = "claude-opus-4-8"
+MAX_TOKENS = 2048
 CONDITIONS = ("baseline", "candidate")
 
 BASE_WEIGHTS = {
@@ -98,11 +104,48 @@ def judge_block():
 def client():
     if anthropic is None:
         sys.exit("The 'anthropic' package is not installed. Run: pip install anthropic")
-    return anthropic.Anthropic()
+    return anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment
 
 
 def extract_text(message):
-    return "".join(block.text for block in message.content if block.type == "text").strip()
+    return "".join(b.text for b in message.content if getattr(b, "type", None) == "text").strip()
+
+
+def _retry_after(exc, attempt, base=5.0, cap=60.0):
+    """Seconds to wait before retrying. Honor a Retry-After header if present,
+    otherwise exponential backoff."""
+    resp = getattr(exc, "response", None)
+    if resp is not None:
+        try:
+            ra = resp.headers.get("retry-after")
+            if ra:
+                return float(ra) + 1.0
+        except Exception:
+            pass
+    return min(cap, base * (2 ** attempt))
+
+
+def call_with_retry(fn, sleep_after=0.0, max_retries=8):
+    """Call fn(); on a rate-limit or overload, wait and retry. Sleeps
+    sleep_after seconds after a success (leave at 0 on a paid tier; raise it
+    only if a low rate limit forces pacing)."""
+    for attempt in range(max_retries + 1):
+        try:
+            resp = fn()
+            if sleep_after:
+                time.sleep(sleep_after)
+            return resp
+        except Exception as exc:  # anthropic raises RateLimitError / APIStatusError
+            code = getattr(exc, "status_code", None)
+            msg = str(exc)
+            retryable = code in (429, 500, 502, 503, 529) \
+                or "rate" in msg.lower() or "overloaded" in msg.lower()
+            if not retryable or attempt == max_retries:
+                raise
+            delay = _retry_after(exc, attempt)
+            print(f"  rate limited / overloaded, waiting {delay:.0f}s then retrying "
+                  f"(attempt {attempt + 1}/{max_retries})", file=sys.stderr)
+            time.sleep(delay)
 
 
 def strip_fences(text):
@@ -150,22 +193,24 @@ def cmd_generate(args):
             for cond in CONDITIONS:
                 if already_done(done, (c["id"], trial, cond)):
                     continue
-                system = body if cond == "candidate" else None
                 kwargs = {
                     "model": args.model,
-                    "max_tokens": 1024,
+                    "max_tokens": MAX_TOKENS,
                     "messages": [{"role": "user", "content": c["prompt"]}],
                 }
-                if system:
-                    kwargs["system"] = system
-                msg = api.messages.create(**kwargs)
+                if cond == "candidate":
+                    kwargs["system"] = body  # skill body only on the candidate
+                resp = call_with_retry(
+                    lambda kwargs=kwargs: api.messages.create(**kwargs),
+                    sleep_after=args.sleep,
+                )
                 append_jsonl(RESPONSES, {
                     "case_id": c["id"],
                     "category": c["category"],
                     "trial": trial,
                     "condition": cond,
                     "model": args.model,
-                    "response": extract_text(msg),
+                    "response": extract_text(resp),
                 })
                 print(f"  generated {c['id']} trial {trial} {cond}")
     print(f"Responses written to {RESPONSES}")
@@ -233,12 +278,20 @@ def cmd_judge(args):
             a=by_cond[labels["A"]]["response"],
             b=by_cond[labels["B"]]["response"],
         )
-        msg = api.messages.create(
-            model=args.model,
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
+        # Prefill the assistant turn with "{" so Claude returns bare JSON
+        # (the Anthropic equivalent of Gemini's response_mime_type=json).
+        resp = call_with_retry(
+            lambda prompt=prompt: api.messages.create(
+                model=args.model,
+                max_tokens=MAX_TOKENS,
+                messages=[
+                    {"role": "user", "content": prompt},
+                    {"role": "assistant", "content": "{"},
+                ],
+            ),
+            sleep_after=args.sleep,
         )
-        verdict = json.loads(strip_fences(extract_text(msg)))
+        verdict = json.loads(strip_fences("{" + extract_text(resp)))
         for label, cond in labels.items():
             row = verdict[label]
             append_jsonl(SCORES, {
@@ -319,8 +372,12 @@ def main():
     g = sub.add_parser("generate")
     g.add_argument("--trials", type=int, default=3)
     g.add_argument("--model", default=DEFAULT_MODEL)
+    g.add_argument("--sleep", type=float, default=0.0,
+                   help="seconds between calls; leave at 0 on a paid tier, raise only if a low rate limit forces pacing")
     j = sub.add_parser("judge")
     j.add_argument("--model", default=DEFAULT_MODEL)
+    j.add_argument("--sleep", type=float, default=0.0,
+                   help="seconds between calls; leave at 0 on a paid tier, raise only if a low rate limit forces pacing")
     sub.add_parser("score")
     args = p.parse_args()
     {"validate": cmd_validate, "generate": cmd_generate,
