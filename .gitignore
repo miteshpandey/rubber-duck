@@ -1,5 +1,8 @@
 evals/results/
+evals/.DS_Store
+skills/.DS_Store
 __pycache__/
 *.pyc
 .env
 .venv
+.DS_Store

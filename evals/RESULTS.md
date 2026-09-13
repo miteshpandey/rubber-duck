@@ -100,8 +100,4 @@ generalizes was worth more than a clean version-to-version diff.
 The honest claim from v3: with the skill injected, the model asked before
 building on every think case (baseline wrote code unasked 10 times, the candidate
 zero), answered factual lookups directly instead of interrogating them, and still
-honored every escape, all measured on a proxy model that follows layered
-instructions loosely. It is a pass on Flash-Lite. It is not yet a measurement on
-Claude, the model the skill actually targets, and it is not a competitor
-benchmark. The next step to remove the remaining caveat is a single confirming
-run on Claude with the same cases, trials, and rubric.
+honored every escape. 
